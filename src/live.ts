@@ -95,6 +95,7 @@ export default class LiveApp {
   private storageCallback = 0;
 
   sendEvent(type: LiveAppEventType, content?: string, label?: string) {
+    console.log("send:", type, label, content);
     LiveApp.service.postMessage(this.createEvent(type, content, label));
 
     if (!this.storageCallback) {
@@ -213,11 +214,8 @@ export default class LiveApp {
 
     const xml = this.api.getXML(label);
     const definition = this.api.getCommandString(label);
-    if (definition) {
-      this.sendEvent("addObject", this.api.getAlgorithmXML(label), label);
-    } else {
-      this.sendEvent("addObject", xml, label);
-    }
+    const algorithmXML = definition && this.api.getAlgorithmXML(label);
+    this.sendEvent("addObject", algorithmXML || xml, label);
 
     this.sendEvent("deselect");
     this.sendEvent("select", label, "true");
@@ -233,6 +231,8 @@ export default class LiveApp {
     this.sendEvent("renameObject", oldName, newName);
   };
 
+  private lastEditingLabel = "";
+
   clientListener = (event: string[] & Record<string, string>) => {
     let label: string, xml: string, state: any;
 
@@ -243,13 +243,18 @@ export default class LiveApp {
         this.sendEvent("evalXML", xml);
         break;
 
+      case "editorStart":
+        this.lastEditingLabel = event[1];
+        break;
+
       case "editorKeyTyped":
         state = this.api.getEditorState();
-        this.sendEvent("setEditorState", state, event[1]);
+        this.sendEvent("setEditorState", state, event[1] || this.lastEditingLabel);
         break;
 
       case "editorStop":
-        this.sendEvent("setEditorState", '{content:""}');
+        this.lastEditingLabel = "";
+        this.sendEvent("setEditorState", '{"content":""}');
         break;
 
       case "deselect":
@@ -328,11 +333,15 @@ export default class LiveApp {
       case "lockTextElement":
       case "unlockTextElement":
         this.sendEvent(event[0], event[1]);
+        break;
+
+      case "mouseDown":
+      case "deleteGeos":
+        // ignore
+        break;
 
       default:
-        if (import.meta.env.DEV) {
-          console.debug("unhandled event ", event[0], event);
-        }
+        console.debug("unhandled event ", event[0], event);
     }
   };
 
@@ -367,6 +376,8 @@ export default class LiveApp {
     const label = last.label as string;
     const content = last.content as string;
     const users = this.getUsers?.();
+
+    console.debug("receive:", type, label, content);
 
     if (type === "addObject") {
       if (target.api.exists(label)) {
@@ -472,6 +483,8 @@ export default class LiveApp {
       target.api.lockTextElement(content);
     } else if (type === "unlockTextElement") {
       target.api.unlockTextElement(content);
+    } else {
+      console.debug("unknown event", type, content, label);
     }
   };
 }
